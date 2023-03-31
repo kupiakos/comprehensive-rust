@@ -23,7 +23,7 @@ mod pl011;
 // ANCHOR_END: top
 mod pl031;
 
-use crate::gicv3::GicV3;
+use crate::gicv3::{irq_enable, GicV3, Trigger};
 use crate::pl031::Rtc;
 use chrono::{TimeZone, Utc};
 // ANCHOR: imports
@@ -56,6 +56,24 @@ extern "C" fn main(x0: u64, x1: u64, x2: u64, x3: u64) {
 
     let mut gic = unsafe { GicV3::new(GICD_BASE_ADDRESS, GICR_BASE_ADDRESS) };
     gic.setup();
+
+    // Test sending an SGI.
+    let sgi_intid = 3;
+    GicV3::set_priority_mask(0xff);
+    gic.set_interrupt_priority(sgi_intid.into(), 0x80);
+    irq_enable();
+    gic.enable_all_interrupts(true);
+    assert_eq!(gic.gicd_pending(0), 0);
+    assert_eq!(gic.gicr_pending(), 0);
+    assert_eq!(gic.gicd_active(0), 0);
+    assert_eq!(gic.gicr_active(), 0);
+    info!("Sending SGI");
+    GicV3::send_sgi(sgi_intid, false, 0, 0, 0, 1);
+    info!("Sent SGI");
+    assert_eq!(gic.gicd_pending(0), 0);
+    assert_eq!(gic.gicr_pending(), 0);
+    assert_eq!(gic.gicd_active(0), 0);
+    assert_eq!(gic.gicr_active(), 0);
 
     // Safe because `PL031_BASE_ADDRESS` is the base address of a PL031 device,
     // and nothing else accesses that address range.

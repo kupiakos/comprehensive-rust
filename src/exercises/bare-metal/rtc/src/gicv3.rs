@@ -13,7 +13,11 @@
 // limitations under the License.
 
 use bitflags::bitflags;
-use core::ptr::{addr_of, addr_of_mut};
+use core::{
+    arch::asm,
+    mem::size_of,
+    ptr::{addr_of, addr_of_mut},
+};
 use log::info;
 
 macro_rules! read_sysreg {
@@ -257,12 +261,9 @@ struct SGI {
     /// Interrupt priority registers for extended PPI range.
     ipriorityr_e: [u8; 64],
     _reserved8: [u32; 488],
-    /// SGI configuration register.
-    icfgr0: u32,
-    /// PPI configuration register.
-    icfgr1: u32,
-    /// Extended PPI configuration registers.
-    icfgr_e: [u32; 4],
+    /// SGI configuration register, PPCI configuration register and extended PPI configuration
+    /// registers.
+    icfgr: [u32; 6],
     _reserved9: [u32; 58],
     /// Interrupt group modifier register 0.
     igrpmodr0: u32,
@@ -294,7 +295,7 @@ impl GicV3 {
         Self {
             gicd: gicd as _,
             gicr: gicr as _,
-            sgi: gicr.offset(SGI_OFFSET) as _,
+            sgi: gicr.wrapping_add(SGI_OFFSET / size_of::<u64>()) as _,
         }
     }
 
@@ -332,5 +333,138 @@ impl GicV3 {
             write_sysreg!(icc_igrpen1_el1, 0x00000001);
         }
     }
+
+    pub fn gicd_pending(&self, index: usize) -> u32 {
+        unsafe { addr_of!((*self.gicd).ispendr[index]).read_volatile() }
     }
+
+    pub fn gicr_pending(&self) -> u32 {
+        unsafe { addr_of!((*self.sgi).ispendr0).read_volatile() }
+    }
+
+    pub fn gicd_active(&self, index: usize) -> u32 {
+        unsafe { addr_of!((*self.gicd).isactiver[index]).read_volatile() }
+    }
+
+    pub fn gicr_active(&self) -> u32 {
+        unsafe { addr_of!((*self.sgi).isactiver0).read_volatile() }
+    }
+
+    pub fn enable_interrupt(&mut self, intid: u32, enable: bool) {
+        let index = (intid / 32) as usize;
+        let bit = 1 << (intid % 32);
+
+        unsafe {
+            if enable {
+                addr_of_mut!((*self.gicd).isenabler[index]).write_volatile(bit);
+                if intid < 32 {
+                    addr_of_mut!((*self.sgi).isenabler0).write_volatile(bit);
+                }
+            } else {
+                addr_of_mut!((*self.gicd).icenabler[index]).write_volatile(bit);
+                if intid < 32 {
+                    addr_of_mut!((*self.sgi).icenabler0).write_volatile(bit);
+                }
+            }
+        }
+    }
+
+    pub fn enable_all_interrupts(&mut self, enable: bool) {
+        for i in 0..32 {
+            unsafe {
+                if enable {
+                    addr_of_mut!((*self.gicd).isenabler[i]).write_volatile(0xffffffff);
+                } else {
+                    addr_of_mut!((*self.gicd).icenabler[i]).write_volatile(0xffffffff);
+                }
+            }
+        }
+        unsafe {
+            if enable {
+                addr_of_mut!((*self.sgi).isenabler0).write_volatile(0xffffffff);
+            } else {
+                addr_of_mut!((*self.sgi).icenabler0).write_volatile(0xffffffff);
+            }
+        }
+    }
+
+    pub fn set_priority_mask(min_priority: u8) {
+        unsafe {
+            write_sysreg!(icc_pmr_el1, min_priority.into());
+        }
+    }
+
+    pub fn set_interrupt_priority(&mut self, intid: u32, priority: u8) {
+        unsafe {
+            addr_of_mut!((*self.gicd).ipriorityr[intid as usize])
+                .write_volatile(priority);
+        }
+    }
+
+    pub fn set_trigger(&mut self, intid: u32, trigger: Trigger) {
+        let index = (intid / 16) as usize;
+        let bit = 1 << (((intid % 16) * 2) + 1);
+
+        unsafe {
+            let register = if intid < 32 {
+                addr_of_mut!((*self.sgi).icfgr[index])
+            } else {
+                addr_of_mut!((*self.gicd).icfgr[index])
+            };
+            let v = register.read_volatile();
+            match trigger {
+                Trigger::Edge => {
+                    register.write_volatile(v | bit);
+                }
+                Trigger::Level => {
+                    register.write_volatile(v & !bit);
+                }
+            }
+        }
+    }
+
+    pub fn send_sgi(
+        intid: u8,
+        irm: bool,
+        affinity3: u8,
+        affinity2: u8,
+        affinity1: u8,
+        target_list: u16,
+    ) {
+        let sgi_register = u64::from(target_list)
+            | (u64::from(affinity1) << 16)
+            | (u64::from(intid & 0x0f) << 24)
+            | (u64::from(affinity2) << 32)
+            | (u64::from(irm) << 40)
+            | (u64::from(affinity3) << 48);
+        unsafe {
+            write_sysreg!(icc_sgi1r_el1, sgi_register);
+        }
+    }
+
+    pub fn get_and_acknowledge_interrupt() -> u32 {
+        (unsafe { read_sysreg!(icc_iar1_el1) }) as u32
+    }
+
+    pub fn end_interrupt(intid: u32) {
+        unsafe { write_sysreg!(icc_eoir1_el1, intid.into()) }
+    }
+}
+
+pub fn irq_disable() {
+    unsafe {
+        asm!("msr DAIFSet, #0xf", options(nomem, nostack));
+    }
+}
+
+pub fn irq_enable() {
+    unsafe {
+        asm!("msr DAIFClr, #0xf", options(nomem, nostack));
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum Trigger {
+    Edge,
+    Level,
 }
