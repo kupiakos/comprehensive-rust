@@ -82,6 +82,21 @@ impl Rtc {
         let ris = unsafe { addr_of!((*self.registers).ris).read_volatile() };
         (ris & 0x01) != 0
     }
+
+    /// Sets or clears the interrupt mask.
+    pub fn mask_interrupt(&mut self, mask: bool) {
+        let imsc = if mask { 0x01 } else { 0x00 };
+        // Safe because we know that self.registers points to the control
+        // registers of a PL031 device which is appropriately mapped.
+        unsafe { addr_of_mut!((*self.registers).imsc).write_volatile(imsc) }
+    }
+
+    /// Clears a pending interrupt, if any.
+    pub fn clear_interrupt(&mut self) {
+        // Safe because we know that self.registers points to the control
+        // registers of a PL031 device which is appropriately mapped.
+        unsafe { addr_of_mut!((*self.registers).icr).write_volatile(0x01) }
+    }
 }
 
 // Safe because it just contains a pointer to device memory, which can be

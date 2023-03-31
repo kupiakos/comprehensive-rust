@@ -57,6 +57,7 @@ extern "C" fn main(x0: u64, x1: u64, x2: u64, x3: u64) {
 
     let target = timestamp + 3;
     rtc.set_match(target);
+    rtc.mask_interrupt(false);
     info!(
         "Waiting for {}",
         Utc.timestamp_opt(target.into(), 0).unwrap()
