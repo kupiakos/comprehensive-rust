@@ -17,11 +17,13 @@
 #![no_std]
 
 mod exceptions;
+mod gicv3;
 mod logger;
 mod pl011;
 // ANCHOR_END: top
 mod pl031;
 
+use crate::gicv3::GicV3;
 use crate::pl031::Rtc;
 use chrono::{TimeZone, Utc};
 // ANCHOR: imports
@@ -29,6 +31,10 @@ use crate::pl011::Uart;
 use core::{hint::spin_loop, panic::PanicInfo};
 use log::{error, info, LevelFilter};
 use psci::system_off;
+
+/// Base addresses of the GICv3.
+const GICD_BASE_ADDRESS: *mut u64 = 0x800_0000 as _;
+const GICR_BASE_ADDRESS: *mut u64 = 0x80A_0000 as _;
 
 /// Base address of the primary PL011 UART.
 pub const PL011_BASE_ADDRESS: *mut u32 = 0x900_0000 as _;
@@ -47,6 +53,9 @@ extern "C" fn main(x0: u64, x1: u64, x2: u64, x3: u64) {
 
     info!("main({:#x}, {:#x}, {:#x}, {:#x})", x0, x1, x2, x3);
     // ANCHOR_END: main
+
+    let mut gic = unsafe { GicV3::new(GICD_BASE_ADDRESS, GICR_BASE_ADDRESS) };
+    gic.setup();
 
     // Safe because `PL031_BASE_ADDRESS` is the base address of a PL031 device,
     // and nothing else accesses that address range.
