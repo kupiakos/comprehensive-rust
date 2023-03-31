@@ -43,6 +43,9 @@ macro_rules! write_sysreg {
     }
 }
 
+/// The offset in bytes from `RD_base` to `SGI_base`.
+const SGI_OFFSET: usize = 0x10000;
+
 #[repr(C, align(8))]
 struct GICD {
     /// Distributor control register.
@@ -211,10 +214,79 @@ struct GICR {
     id_registers: [u32; 12],
 }
 
+#[repr(C, align(8))]
+struct SGI {
+    _reserved0: [u32; 32],
+    /// Interrupt group register 0.
+    igroupr0: u32,
+    /// Interrupt group registers for extended PPI range.
+    igroupr_e: [u32; 2],
+    _reserved1: [u32; 29],
+    /// Interrupt set-enable register 0.
+    isenabler0: u32,
+    /// Interrupt set-enable registers for extended PPI range.
+    isenabler_e: [u32; 2],
+    _reserved2: [u32; 29],
+    /// Interrupt clear-enable register 0.
+    icenabler0: u32,
+    /// Interrupt clear-enable registers for extended PPI range.
+    icenabler_e: [u32; 2],
+    _reserved3: [u32; 29],
+    /// Interrupt set-pending register 0.
+    ispendr0: u32,
+    /// Interrupt set-pending registers for extended PPI range.
+    ispendr_e: [u32; 2],
+    _reserved4: [u32; 29],
+    /// Interrupt clear-pending register 0.
+    icpendr0: u32,
+    /// Interrupt clear-pending registers for extended PPI range.
+    icpendr_e: [u32; 2],
+    _reserved5: [u32; 29],
+    /// Interrupt set-active register 0.
+    isactiver0: u32,
+    /// Interrupt set-active registers for extended PPI range.
+    isactive_e: [u32; 2],
+    _reserved6: [u32; 29],
+    /// Interrupt clear-active register 0.
+    icactiver0: u32,
+    /// Interrupt clear-active registers for extended PPI range.
+    icactive_e: [u32; 2],
+    _reserved7: [u32; 29],
+    /// Interrupt priority registers.
+    ipriorityr: [u8; 32],
+    /// Interrupt priority registers for extended PPI range.
+    ipriorityr_e: [u8; 64],
+    _reserved8: [u32; 488],
+    /// SGI configuration register.
+    icfgr0: u32,
+    /// PPI configuration register.
+    icfgr1: u32,
+    /// Extended PPI configuration registers.
+    icfgr_e: [u32; 4],
+    _reserved9: [u32; 58],
+    /// Interrupt group modifier register 0.
+    igrpmodr0: u32,
+    /// Interrupt group modifier registers for extended PPI range.
+    igrpmodr_e: [u32; 2],
+    _reserved10: [u32; 61],
+    /// Non-secure access control register.
+    nsacr: u32,
+    _reserved11: [u32; 95],
+    /// Non-maskable interrupt register for PPIs.
+    inmir0: u32,
+    /// Non-maskable interrupt register for extended PPIs.
+    inmir_e: [u32; 31],
+    _reserved12: [u32; 11264],
+    /// Implementation defined registers.
+    implementation_defined: [u32; 4084],
+    _reserved13: [u32; 12],
+}
+
 #[derive(Debug)]
 pub struct GicV3 {
     gicd: *mut GICD,
     gicr: *mut GICR,
+    sgi: *mut SGI,
 }
 
 impl GicV3 {
@@ -222,6 +294,7 @@ impl GicV3 {
         Self {
             gicd: gicd as _,
             gicr: gicr as _,
+            sgi: gicr.offset(SGI_OFFSET) as _,
         }
     }
 
