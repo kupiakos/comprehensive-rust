@@ -325,7 +325,7 @@ impl GicV3 {
 
         // Put interrupts into non-secure group 1.
         unsafe {
-            addr_of_mut!((*self.gicd).igroupr[0]).write_volatile(0xffffffff);
+            addr_of_mut!((*self.sgi).igroupr0).write_volatile(0xffffffff);
         }
 
         // Enable non-secure group 1.
