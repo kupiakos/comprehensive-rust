@@ -463,6 +463,12 @@ pub fn irq_enable() {
     }
 }
 
+pub fn wfi() {
+    unsafe {
+        asm!("wfi", options(nomem, nostack));
+    }
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Trigger {
     Edge,

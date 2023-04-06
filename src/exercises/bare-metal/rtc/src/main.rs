@@ -23,7 +23,7 @@ mod pl011;
 // ANCHOR_END: top
 mod pl031;
 
-use crate::gicv3::{irq_enable, GicV3, Trigger};
+use crate::gicv3::{irq_enable, wfi, GicV3, Trigger};
 use crate::pl031::Rtc;
 use chrono::{TimeZone, Utc};
 // ANCHOR: imports
@@ -76,6 +76,9 @@ extern "C" fn main(x0: u64, x1: u64, x2: u64, x3: u64) {
     assert_eq!(gic.gicr_pending(), 0);
     assert_eq!(gic.gicd_active(0), 0);
     assert_eq!(gic.gicr_active(), 0);
+    loop {
+        wfi();
+    }
 
     // Safe because `PL031_BASE_ADDRESS` is the base address of a PL031 device,
     // and nothing else accesses that address range.
